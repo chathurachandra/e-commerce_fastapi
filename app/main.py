@@ -105,9 +105,32 @@ def create_product(
     search_index.add_document(new_product.id, text)
     autocomplete_trie.insert(new_product.name)
     return new_product
-@app.get("/products", response_model=list[ProductResponse])
-def list_products(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    return db.query(Product).offset(skip).limit(limit).all()
+from sqlalchemy import asc, desc
+from fastapi import Query
+@app.get("/products")
+def list_products(
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    sort_by: str = "id",
+    order: str = "desc",
+    db: Session = Depends(get_db)
+):
+    offset = (page - 1) * limit
+    query = db.query(Product)
+    if hasattr(Product, sort_by):
+        column = getattr(Product, sort_by)
+        if order == "desc":
+            query = query.order_by(desc(column))
+        else:
+            query = query.order_by(asc(column))
+    total = db.query(Product).count()
+    products = query.offset(offset).limit(limit).all()
+    return {
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "data": products
+    }
 @app.get("/search", response_model=list[ProductResponse])
 def search_products(
     q: str,
